@@ -198,14 +198,15 @@ function ProjectPage({ params }: ProjectPageProps) {
 
   const handleDocumentUpload = async (files: File[]) => {
     if (!userId) return;
-
+  
     const token = await getToken();
     const uploadedDocuments: ProjectDocument[] = [];
-
+  
     // Process all files in parallel
-
     const uploadPromises = files.map(async (file) => {
       try {
+        console.log("Step 1: Getting presigned URL for", file.name);
+        
         // Step 1: Get presigned URL
         const uploadData = await apiClient.post(
           `/api/projects/${projectId}/files/upload-url`,
@@ -216,37 +217,45 @@ function ProjectPage({ params }: ProjectPageProps) {
           },
           token
         );
-
+  
+        console.log("Step 1 success:", uploadData);
         const { upload_url, s3_key } = uploadData.data;
-
+  
+        console.log("Step 2: Uploading to S3...");
+        
         // Step 2: Upload file to S3
         await apiClient.uploadToS3(upload_url, file);
-
+        
+        console.log("Step 2 success");
+        console.log("Step 3: Confirming upload with s3_key:", s3_key);
+  
         // Step 3: Confirm upload to the server (starts background processing)
-        const updatedDocument = await apiClient.post(
+        const confirmResult = await apiClient.post(
           `/api/projects/${projectId}/files/confirm`,
           {
             s3_key,
           },
           token
         );
-
-        uploadedDocuments.push(updatedDocument.data);
+  
+        console.log("Step 3 success:", confirmResult);
+        uploadedDocuments.push(confirmResult.data.data);
+        
       } catch (err) {
+        console.error(`Upload failed for ${file.name}:`, err);
         toast.error(`Failed to upload ${file.name}`);
       }
     });
-
+  
     await Promise.allSettled(uploadPromises);
-
-    // Update local state with successfully uploaded docuemnts
-
+  
+    // Update local state with successfully uploaded documents
     if (uploadedDocuments.length > 0) {
       setData((prev) => ({
         ...prev,
         documents: [...uploadedDocuments, ...prev.documents],
       }));
-
+  
       toast.success(`${uploadedDocuments.length} file(s) uploaded`);
     }
   };
